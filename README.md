@@ -14,8 +14,9 @@
 4. [路線 B：把你原本的 Zeabur 修好](#4-路線-b把你原本的-zeabur-修好)
 5. [設定 Gemini API Key](#5-設定-gemini-api-key)
 6. [推薦的 Gemini 參數](#6-推薦的-gemini-參數)
-7. [日常維護：更新、備份、加人](#7-日常維護更新備份加人)
-8. [疑難排解](#8-疑難排解)
+7. [從舊酒館搬家過來](#7-從舊酒館搬家過來)
+8. [日常維護：更新、備份、加人](#8-日常維護更新備份加人)
+9. [疑難排解](#9-疑難排解)
 
 ---
 
@@ -86,7 +87,7 @@ A     tavern    你的伺服器 IP
 
 這樣 `tavern.你的網域.com` 就會指到伺服器。等個幾分鐘生效。
 
-> 如果你用 Cloudflare 管 DNS，**第一次部署請先把橘色雲朵關掉（DNS only）**，讓 Caddy 順利申請憑證。成功之後要不要打開再說（見 [8.4](#84-要不要掛-cloudflare)）。
+> 如果你用 Cloudflare 管 DNS，**第一次部署請先把橘色雲朵關掉（DNS only）**，讓 Caddy 順利申請憑證。成功之後要不要打開再說（見 [9.4](#94-要不要掛-cloudflare)）。
 
 ### 3.3 SSH 進去，裝環境
 
@@ -255,7 +256,22 @@ SillyTavern 1.18.0 內建的 Gemini 模型清單裡，實用的幾個：
 
 ---
 
-## 7. 日常維護：更新、備份、加人
+## 7. 從舊酒館搬家過來
+
+已經有一個舊的酒館（Zeabur 或別的地方），要把角色卡、聊天記錄、世界書都搬過來的話，
+完整步驟在 **[docs/migration.md](docs/migration.md)**。
+
+最快的版本：舊酒館 → User Settings → Account → **Download Backup** 下載 zip，
+傳到新伺服器，`docker compose stop sillytavern` 之後解壓到 `data/default-user/`，再啟動。
+
+兩個一定要知道的點：
+
+- **備份 zip 不含 API key**，搬完要重新輸入一次 Gemini key
+- **搬檔案前一定要先停掉容器**，不然 SillyTavern 會邊寫邊蓋掉你放進去的檔案
+
+---
+
+## 8. 日常維護：更新、備份、加人
 
 ### 更新到最新版
 
@@ -293,9 +309,9 @@ enableDiscreetLogin: true   # 登入頁不列出使用者名單
 
 ---
 
-## 8. 疑難排解
+## 9. 疑難排解
 
-### 8.1 容器起不來，log 說 configuration is insecure
+### 9.1 容器起不來，log 說 configuration is insecure
 
 ```
 Your current SillyTavern configuration is insecure (listening to non-localhost).
@@ -305,7 +321,7 @@ Your current SillyTavern configuration is insecure (listening to non-localhost).
 
 **不要**用 `securityOverride: true` 繞過去——那等於把你的酒館和 API key 開放給全世界。
 
-### 8.2 Caddy 拿不到憑證
+### 9.2 Caddy 拿不到憑證
 
 依序檢查：
 
@@ -322,11 +338,11 @@ docker compose logs caddy | tail -50
 
 最常見的三個原因：DNS 還沒生效、雲端商的安全群組沒開 80/443（Oracle Cloud 特別容易踩）、Cloudflare 橘色雲朵開著。
 
-### 8.3 AI 回覆卡住，等很久才一次全部跳出來
+### 9.3 AI 回覆卡住，等很久才一次全部跳出來
 
 串流被緩衝了。確認 `Caddyfile` 裡有 `flush_interval -1`，改完 `docker compose restart caddy`。如果前面還有 Cloudflare，也可能是它造成的，先關掉 proxy 測測看。
 
-### 8.4 要不要掛 Cloudflare
+### 9.4 要不要掛 Cloudflare
 
 **好處**：靜態檔案在邊緣節點快取，第二次之後開站更快；隱藏真實 IP；免費防 DDoS。
 
@@ -334,7 +350,7 @@ docker compose logs caddy | tail -50
 
 **建議**：先不掛，把 VPS 放東京就已經夠快了。真的要掛的話，記得同時把 `config/config.yaml` 裡的 `forwardedHeaders.cfConnectingIp` 改成 `true`，SillyTavern 才讀得到真實 IP。
 
-### 8.5 想確認到底慢在哪
+### 9.5 想確認到底慢在哪
 
 在自己電腦上量一下：
 
@@ -359,7 +375,7 @@ curl -o /dev/null -s -w "DNS: %{time_namelookup}s\nTCP: %{time_connect}s\nTLS: %
   > 這裡要用 `-D -`（印出 header）而不是 `-I`。`-I` 是 HEAD 請求，不會觸發壓縮，
   > 你會看到「沒有 content-encoding」而誤判。
 
-### 8.6 每個請求都回 500，log 出現 `Invalid value used as weak map key`
+### 9.6 每個請求都回 500，log 出現 `Invalid value used as weak map key`
 
 `config.yaml` 裡的 `hostWhitelist.hosts` 被寫成空值了：
 
@@ -377,7 +393,7 @@ hostWhitelist:
 
 （本 repo 的設定檔已經是正確的寫法，這條是給你之後手動改壞的時候對照用。）
 
-### 8.7 容器狀態怎麼看
+### 9.7 容器狀態怎麼看
 
 ```bash
 docker compose ps              # 兩個服務都要是 running / healthy
@@ -400,6 +416,8 @@ df -h                          # 磁碟滿了也會讓一切變慢
 ├── deploy/
 │   ├── bootstrap-ubuntu.sh     全新 Ubuntu 一鍵裝 Docker + 防火牆
 │   └── update.sh               備份 + 更新到最新版
+├── docs/
+│   └── migration.md            從舊酒館搬資料過來的完整步驟
 └── data/                       （執行時產生）你的角色卡和聊天記錄，不進 git
 ```
 
