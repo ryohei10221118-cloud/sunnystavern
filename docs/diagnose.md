@@ -98,19 +98,34 @@
 當你看到「TTFB 很低、CPU 0%、但一堆**靜態檔案**各花好幾百毫秒」，
 那通常不是伺服器慢，是**頻寬**。這段直接量。
 
-在 Console 貼上（會連測 3 次取中位數）：
+直接在**已經載入完成**的酒館頁面貼上就好，不用先重整。
+它只會挑靜態檔案（`.js` / `.css` / 字型）來測，並且會先確認抓得到才開始計時：
 
 ```js
 (async () => {
-  const r = performance.getEntriesByType('resource')
-    .filter(x => x.decodedBodySize > 100000)
-    .sort((a, b) => b.decodedBodySize - a.decodedBodySize);
-  if (!r.length) return '找不到夠大的檔案，請先重整一次再跑';
-  const url = new URL(r[0].name).pathname;
+  const isStatic = u => /\.(js|css|woff2?|ttf|png|jpg|webp|svg)(\?|$)/i.test(u)
+    && !u.includes('/api/');
+  let cands = performance.getEntriesByType('resource')
+    .filter(x => isStatic(x.name) && x.decodedBodySize > 50000)
+    .sort((a, b) => b.decodedBodySize - a.decodedBodySize)
+    .map(x => new URL(x.name).pathname);
+  // 保險：效能紀錄裡挑不到就直接用 SillyTavern 的主 bundle
+  if (!cands.length) cands = ['/lib.js'];
+
+  let url = null;
+  for (const c of cands.slice(0, 5)) {
+    try {
+      const probe = await fetch(c + '?probe=' + Date.now(), { cache: 'no-store' });
+      if (probe.ok && (await probe.arrayBuffer()).byteLength > 50000) { url = c; break; }
+    } catch (e) { }
+  }
+  if (!url) return '找不到可測的靜態檔，請先強制重整一次再跑';
+
   const runs = [];
   for (let i = 0; i < 3; i++) {
     const t0 = performance.now();
     const res = await fetch(url + '?nocache=' + Date.now() + '-' + i, { cache: 'no-store' });
+    if (!res.ok) return '抓取失敗 ' + res.status + '：' + url;
     const buf = await res.arrayBuffer();
     const sec = (performance.now() - t0) / 1000;
     const mb = buf.byteLength / 1048576;
