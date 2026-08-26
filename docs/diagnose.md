@@ -93,6 +93,67 @@
 
 ---
 
+## 第二段：量伺服器的實際吞吐量
+
+當你看到「TTFB 很低、CPU 0%、但一堆**靜態檔案**各花好幾百毫秒」，
+那通常不是伺服器慢，是**頻寬**。這段直接量。
+
+在 Console 貼上（會連測 3 次取中位數）：
+
+```js
+(async () => {
+  const r = performance.getEntriesByType('resource')
+    .filter(x => x.decodedBodySize > 100000)
+    .sort((a, b) => b.decodedBodySize - a.decodedBodySize);
+  if (!r.length) return '找不到夠大的檔案，請先重整一次再跑';
+  const url = new URL(r[0].name).pathname;
+  const runs = [];
+  for (let i = 0; i < 3; i++) {
+    const t0 = performance.now();
+    const res = await fetch(url + '?nocache=' + Date.now() + '-' + i, { cache: 'no-store' });
+    const buf = await res.arrayBuffer();
+    const sec = (performance.now() - t0) / 1000;
+    const mb = buf.byteLength / 1048576;
+    runs.push({ mb, sec, mbps: mb * 8 / sec });
+  }
+  const med = [...runs].sort((a, b) => a.mbps - b.mbps)[1];
+  const out = [
+    '=== 吞吐量測試 ===',
+    '測試檔案 : ' + url,
+    '檔案大小 : ' + med.mb.toFixed(2) + 'MB',
+    ...runs.map((x, i) => '第 ' + (i + 1) + ' 次  : ' + x.sec.toFixed(2) + 's  '
+      + x.mbps.toFixed(1) + ' Mbps'),
+    '中位數   : ' + med.mbps.toFixed(1) + ' Mbps',
+  ].join('\n');
+  console.log(out);
+  try { copy(out); console.log('↑ 已複製'); } catch (e) { }
+})()
+```
+
+**接著做對照組**：用 [fast.com](https://fast.com) 或 Speedtest 測一次你自己的網路
+（Speedtest 記得手動選**東京**的伺服器）。
+
+| 結果 | 意思 |
+|---|---|
+| 酒館 ~8 Mbps，你的網路 100+ Mbps | **伺服器端頻寬受限**。換平台，或在前面加 CDN |
+| 兩邊差不多都很低 | 是你的網路，不是伺服器 |
+| 酒館 50+ Mbps | 頻寬沒問題，回頭查別的 |
+
+### 如果確定是頻寬受限
+
+SillyTavern 冷啟動要傳 **4MB 以上**的 JS/CSS/字型，全部都是**靜態且不會變**的檔案。
+在前面加一層 CDN，這些東西就會被快取在離你最近的節點，不再每次都擠伺服器那條窄管：
+
+- Cloudflare 免費方案就夠。把網域的 DNS 交給它，橘色雲朵打開
+- 對 `/scripts/*`、`/lib.js`、`/webfonts/*`、`/css/*` 設快取規則
+- 注意串流：設定好之後測一下 AI 回覆是不是還逐字出現，
+  不是的話把 proxy 關掉再想別的辦法
+
+自架的話，本 repo 的 Caddy 設定已經對這些路徑加了一週的瀏覽器快取，
+但**第一次**還是要從伺服器抓，所以頻寬受限的平台換掉才是根治。
+
+---
+
 ## 已知瓶頸：`/api/settings/get`
 
 如果你量出來這個 endpoint 特別慢（幾百毫秒以上），那不是你的錯，是它的實作方式：
