@@ -230,14 +230,43 @@ SillyTavern 冷啟動要傳 **4MB 以上**的 JS/CSS/字型，全部都是**靜�
 
 或直接動檔案（Zeabur 的「指令」按鈕可以進容器）：
 
-```bash
+> 官方 image 是 Alpine，**只有 `sh` 沒有 `bash`**。下面的指令都是 sh 相容的。
+
+```sh
 cd /home/node/app/public/scripts/extensions/third-party
-ls -la                    # 先看有哪些
-du -sh */                 # 看各自多大 ← 最直接
-mv 擴充名稱 /tmp/          # 先搬走不要刪，確認變快再刪
+du -sh */                 # 各擴充佔多少磁碟
 ```
 
-搬完重啟服務。要還原就把它搬回來。
+**但磁碟大小會騙人**。擴充是用 git clone 裝的，`du` 把 `.git` 也算進去了，
+而 `.git` 完全不會送到瀏覽器。要看真正影響載入速度的部分：
+
+```sh
+for d in */; do
+  echo "--- $d"
+  du -sh "$d.git" 2>/dev/null
+  du -sh --exclude=.git "$d" 2>/dev/null || du -sh "$d"
+done
+```
+
+不過 `.git` 很大本身也有代價：`extensions.autoUpdate` 開著的話，
+**SillyTavern 版本一變動，下次載入就會對每個擴充做 git 更新，而且是被
+`await` 住的**——repo 越大這一次越久。設 `extensions.autoUpdate: false` 可以避免。
+
+### 決定性的測試：搬走再測
+
+```sh
+cd /home/node/app/public/scripts/extensions/third-party
+mv 擴充名稱 /tmp/          # 先搬走，不要刪
+```
+
+重啟服務，開一次看看。變快就是它。要還原就搬回來：
+
+```sh
+mv /tmp/擴充名稱 /home/node/app/public/scripts/extensions/third-party/
+```
+
+> 注意：如果這個目錄沒有掛持久化磁碟，搬到 `/tmp` 的東西在容器重建後會消失。
+> 重要的擴充請先確認它在 GitHub 上還裝得回來，或先備份出來。
 
 ---
 
