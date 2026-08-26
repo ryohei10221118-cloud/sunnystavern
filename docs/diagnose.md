@@ -66,6 +66,71 @@
 
 ---
 
+## 第二段：量「初始化」卡在哪
+
+上面那段量的是**網路**。但如果網路數字都很漂亮、Load 也在一秒內，
+你卻還是覺得卡很久，那時間就是花在 **JS 執行**上——這在資源計時裡完全看不到。
+
+一樣的操作（強制重新整理 → 等完全載入完 → 貼進 Console）：
+
+```js
+(() => {
+  const out = [];
+  const P = (...a) => out.push(a.join(' '));
+  const ms = v => Math.round(v) + 'ms';
+  const n = performance.getEntriesByType('navigation')[0];
+  const r = performance.getEntriesByType('resource');
+
+  // 這次是不是走快取？沒有這一行，數字會被誤讀
+  const transferred = r.reduce((a, x) => a + (x.transferSize || 0), 0) + (n.transferSize || 0);
+  const decoded = r.reduce((a, x) => a + (x.decodedBodySize || 0), 0) + (n.decodedBodySize || 0);
+  P('=== 這次載入的性質 ===');
+  P('實際傳輸 :', Math.round(transferred / 1048576 * 100) / 100 + 'MB');
+  P('原始大小 :', Math.round(decoded / 1048576 * 100) / 100 + 'MB');
+  P('判定     :', decoded < 102400 ? '資料不足' : (transferred < decoded * 0.2 ? '★ 走快取（不是冷啟動，數字會偏樂觀）' : '冷啟動（真實首次載入）'));
+
+  P('');
+  P('=== 時間軸 ===');
+  P('Load 事件    :', ms(n.loadEventEnd));
+  P('現在         :', ms(performance.now()));
+  P('Load 後又花了:', ms(performance.now() - n.loadEventEnd), '← 初始化如果卡，卡在這段');
+
+  // longtask 只能透過 observer 的 callback 拿，getEntriesByType 不支援
+  const tasks = [];
+  try {
+    new PerformanceObserver(list => tasks.push(...list.getEntries()))
+      .observe({ type: 'longtask', buffered: true });
+  } catch (e) { }
+  setTimeout(() => {
+    P('');
+    P('=== JS 卡住的長任務（>50ms）===');
+    if (!tasks.length) {
+      P('  取不到（Chrome 才支援，或這次沒有長任務）');
+    } else {
+      const total = tasks.reduce((a, x) => a + x.duration, 0);
+      P('  數量:', tasks.length, ' 總阻塞:', ms(total));
+      [...tasks].sort((a, b) => b.duration - a.duration).slice(0, 8)
+        .forEach(x => P('  ', ms(x.duration).padStart(8), '@', ms(x.startTime)));
+    }
+    const txt = out.join('\n');
+    console.log(txt);
+    let ok = false;
+    try { copy(txt); ok = true; } catch (e) { }
+    console.log(ok ? '↑ 已複製到剪貼簿' : '↑ 請手動選取複製');
+  }, 300);
+  return '量測中，0.3 秒後印出結果…';
+})()
+```
+
+**要看的**：
+
+- `判定` 那行如果是「走快取」，代表這次不是真實的首次載入，
+  要開 DevTools 的 **Network 分頁 → 勾選 Disable cache**，保持 DevTools 開著再重整一次
+- `Load 後又花了` 如果是好幾秒，那就是 **JS 在跑**，不是網路問題
+- `總阻塞` 很大 → 有擴充功能或大量資料在拖累初始化
+
+---
+
 ## 怎麼讀這些數字
 
 ### `HTTP 協定` 這一行最關鍵
@@ -116,3 +181,31 @@ SillyTavern 首頁大約會發 **200–400 個請求**。如果協定分布裡 `
 
 - 行動網路明顯更慢 → 是「檔案多 + 連線數少」的問題，頻寬和延遲一放大就爆
 - 兩邊一樣慢 → 是伺服器端在等東西，跟你的網路無關
+
+---
+
+## 已知瓶頸：`/api/settings/get`
+
+如果你量出來這個 endpoint 特別慢（幾百毫秒以上），那不是你的錯，是它的實作方式：
+
+每一次載入頁面，這個 endpoint 都會**同步**掃過 12 個目錄，把裡面每個 JSON
+逐一讀出來並解析——instruct、context、sysprompt、reasoning、themes、
+movingUI、QuickReplies、worlds，加上四家 API 的預設集。
+
+光是 SillyTavern 內建的預設就有 **134 個檔案**，還沒算你自己加的。
+
+關鍵在於它用的是 `readdirSync` / `readFileSync`。Node 是單執行緒，
+這段期間**整個伺服器是凍住的**，什麼請求都處理不了。
+
+這在本機 SSD 上大概 30ms 無感，但在**網路掛載的雲端磁碟**上，
+每個小檔案的讀取都要走一次網路，134 個檔案就會放大成好幾百毫秒。
+這也解釋了為什麼你會看到「CPU 用量 0% 但就是很慢」——它不是在算，是在等磁碟。
+
+**能做的**：
+
+- 刪掉用不到的預設集（`instruct` 和 `context` 各有 30 幾個，你大概只用一兩個）
+- 刪完之後把 `skipContentCheck` 設成 `true`，否則下次啟動會全部補回來
+- 如果雲端平台有「本機磁碟 / SSD」選項，優先選它，不要用網路儲存
+
+> 注意：刪預設集前先備份。這個改善的是每次載入固定的幾百毫秒，
+> 如果你的問題是「卡好幾秒」，那主因不在這裡，別先動它。
