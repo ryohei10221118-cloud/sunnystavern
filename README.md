@@ -34,6 +34,7 @@
 | **啟動要等很久才有反應** | SillyTavern 預設會在啟動時 `git pull` 所有第三方擴充、下載 HuggingFace 模型和 tokenizer | 本 repo 的 `config/config.yaml` 已經把這些關掉了 |
 | **AI 回覆不是逐字出現，是等很久然後一次全部跳出來** | 反向代理把串流回應緩衝住了 | Caddy 要設 `flush_interval -1`（本 repo 已設好） |
 | **卡在初始化很久，但網頁本身載得很快** | 某個第三方擴充太肥。擴充是**依序**載入的，一個卡住後面全部排隊 | 用 [docs/diagnose.md](docs/diagnose.md) 的「各擴充體積」找出兇手，看「最晚結束」那一欄 |
+| **用了 ST-Prompt-Template，初始化要等 20 秒以上** | 它把 Monaco Editor 靜態打包進 4.85MB 的 bundle，即使程式碼編輯器預設是關的也照載 | 換成 [docs/lazy-monaco-extension.md](docs/lazy-monaco-extension.md) 的改良版，實測落後本體從 22.5 秒降到 98ms |
 
 > **關於壓縮**：SillyTavern 本身就內建了 gzip 壓縮（`compression` middleware，預設開啟），
 > 所以這一項通常不是你的問題。要注意的是**不要讓中間的代理把它拆掉**——
@@ -422,6 +423,7 @@ df -h                          # 磁碟滿了也會讓一切變慢
 │   └── update.sh               備份 + 更新到最新版
 ├── docs/
 │   ├── diagnose.md             量測「打開很慢」到底慢在哪
+│   ├── lazy-monaco-extension.md 改良版 ST-Prompt-Template 的安裝與說明
 │   └── migration.md            從舊酒館搬資料過來的完整步驟
 └── data/                       （執行時產生）你的角色卡和聊天記錄，不進 git
 ```
