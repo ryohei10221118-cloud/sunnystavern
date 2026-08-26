@@ -1,0 +1,16 @@
+{
+    "display_name": "Prompt Template (lazy-monaco)/提示詞模板",
+    "loading_order": 1,
+    "requires": [],
+    "optional": [],
+    "js": "dist/index.js",
+    "css": "",
+    "author": "zonde306",
+    "version": "1.17.8.1-lazymonaco",
+    "homePage": "https://github.com/zonde306/ST-Prompt-Template",
+    "auto_update": false,
+    "i18n": {
+        "zh-cn": "locales/zh-cn.json",
+        "zh-tw": "locales/zh-tw.json"
+    }
+}

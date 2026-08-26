@@ -1,0 +1,1 @@
+import*as _ from"../libs/faker.mjs";export const __webpack_esm_id__=2395;export const __webpack_esm_ids__=[2395];export const __webpack_esm_modules__={92395(e){e.exports=_}};
