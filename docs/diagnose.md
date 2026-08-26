@@ -6,247 +6,90 @@
 
 ## 步驟
 
-1. 用**電腦版 Chrome 或 Edge**打開你的酒館網址
-2. 按 **F12** 開開發者工具，切到 **Console（主控台）** 分頁
-3. 按 **Ctrl + Shift + R**（Mac 是 Cmd + Shift + R）**強制重新整理**
-4. **等到酒館完全載入完**（初始化跑完、角色列表出來為止）
-5. 回到 Console，把下面整段貼進去按 Enter
+1. 用**電腦版 Chrome 或 Edge** 打開你的酒館
+2. 按 **F12** → **Network（網路）** 分頁 → **勾選 Disable cache**
+3. 切到 **Console** 分頁，輸入 `allow pasting` 按 Enter（先解鎖貼上）
+4. 按 **Ctrl + Shift + R** 強制重新整理
+5. **趁它還在初始化**，馬上把下面整段貼進 Console 按 Enter
+6. 不用管它，**網路連續安靜 3 秒**後會自動印出結果並複製到剪貼簿
 
-> Chrome 可能會擋你貼上，並要你先手動輸入 `allow pasting` 再按 Enter。照做就好。
-
-```js
-(() => {
-  const n = performance.getEntriesByType('navigation')[0];
-  const r = performance.getEntriesByType('resource');
-  const ms = v => Math.round(v) + 'ms';
-  const kb = v => Math.round((v || 0) / 1024) + 'KB';
-  const out = [];
-  const P = (...a) => out.push(a.join(' '));
-
-  P('=== 主文件 ===');
-  P('HTTP 協定 :', n.nextHopProtocol || '(不明)');
-  P('DNS       :', ms(n.domainLookupEnd - n.domainLookupStart));
-  P('TCP       :', ms(n.connectEnd - n.connectStart));
-  P('TLS       :', n.secureConnectionStart ? ms(n.connectEnd - n.secureConnectionStart) : '(非 HTTPS)');
-  P('TTFB 等待 :', ms(n.responseStart - n.requestStart));
-  P('下載 HTML :', ms(n.responseEnd - n.responseStart), kb(n.transferSize), '(原始', kb(n.decodedBodySize) + ')');
-  P('DOM 完成  :', ms(n.domContentLoadedEventEnd));
-  P('Load 完成 :', ms(n.loadEventEnd));
-
-  P('');
-  P('=== 資源總覽 ===');
-  P('請求數    :', r.length);
-  P('總傳輸量  :', Math.round(r.reduce((a, x) => a + (x.transferSize || 0), 0) / 1048576 * 100) / 100 + 'MB');
-  const proto = {};
-  r.forEach(x => { const k = x.nextHopProtocol || '(快取)'; proto[k] = (proto[k] || 0) + 1; });
-  P('協定分布  :', JSON.stringify(proto));
-  const noEnc = r.filter(x => x.decodedBodySize > 10240 && x.encodedBodySize >= x.decodedBodySize).length;
-  P('沒被壓縮的大檔 :', noEnc);
-
-  P('');
-  P('=== 最慢的 10 個資源 ===');
-  [...r].sort((a, b) => b.duration - a.duration).slice(0, 10)
-    .forEach(x => P(' ', ms(x.duration).padStart(8), kb(x.transferSize).padStart(8), ' ', x.name.replace(location.origin, '').slice(0, 70)));
-
-  P('');
-  P('=== 最慢的 10 個 API 呼叫 ===');
-  [...r].filter(x => ['xmlhttprequest', 'fetch'].includes(x.initiatorType))
-    .sort((a, b) => b.duration - a.duration).slice(0, 10)
-    .forEach(x => P(' ', ms(x.duration).padStart(8), kb(x.transferSize).padStart(8), ' ', x.name.replace(location.origin, '').slice(0, 70)));
-
-  const txt = out.join('\n');
-  console.log(txt);
-  let copied = false;
-  try { copy(txt); copied = true; } catch (e) {}
-  return copied ? '↑ 結果已複製到剪貼簿，直接貼出來即可' : '↑ 請把上面整段結果選取複製';
-})()
-```
-
-6. 結果會印在 Console，**同時也自動複製到剪貼簿了**，直接貼出來就好
-
----
-
-## 第二段：量「初始化」卡在哪
-
-上面那段量的是**網路**。但如果網路數字都很漂亮、Load 也在一秒內，
-你卻還是覺得卡很久，那時間就是花在 **JS 執行**上——這在資源計時裡完全看不到。
-
-一樣的操作（強制重新整理 → 等完全載入完 → 貼進 Console）：
+貼晚了也沒關係，`buffered: true` 會把它啟動前的紀錄補回來。
+量測時點由程式自己決定，不再受你手動貼上的快慢影響。
 
 ```js
 (() => {
-  const out = [];
-  const P = (...a) => out.push(a.join(' '));
-  const ms = v => Math.round(v) + 'ms';
-  const n = performance.getEntriesByType('navigation')[0];
-  const r = performance.getEntriesByType('resource');
-
-  // 這次是不是走快取？沒有這一行，數字會被誤讀
-  const transferred = r.reduce((a, x) => a + (x.transferSize || 0), 0) + (n.transferSize || 0);
-  const decoded = r.reduce((a, x) => a + (x.decodedBodySize || 0), 0) + (n.decodedBodySize || 0);
-  P('=== 這次載入的性質 ===');
-  P('實際傳輸 :', Math.round(transferred / 1048576 * 100) / 100 + 'MB');
-  P('原始大小 :', Math.round(decoded / 1048576 * 100) / 100 + 'MB');
-  P('判定     :', decoded < 102400 ? '資料不足' : (transferred < decoded * 0.2 ? '★ 走快取（不是冷啟動，數字會偏樂觀）' : '冷啟動（真實首次載入）'));
-
-  P('');
-  P('=== 時間軸 ===');
-  P('Load 事件    :', ms(n.loadEventEnd));
-  P('現在         :', ms(performance.now()));
-  P('Load 後又花了:', ms(performance.now() - n.loadEventEnd), '← 初始化如果卡，卡在這段');
-
-  // longtask 只能透過 observer 的 callback 拿，getEntriesByType 不支援
   const tasks = [];
   try {
-    new PerformanceObserver(list => tasks.push(...list.getEntries()))
+    new PerformanceObserver(l => tasks.push(...l.getEntries()))
       .observe({ type: 'longtask', buffered: true });
   } catch (e) { }
-  setTimeout(() => {
+
+  const report = () => {
+    const out = [];
+    const P = (...a) => out.push(a.join(' '));
+    const ms = v => Math.round(v) + 'ms';
+    const mb = v => Math.round(v / 1048576 * 100) / 100 + 'MB';
+    const n = performance.getEntriesByType('navigation')[0];
+    const r = performance.getEntriesByType('resource').filter(x => x.responseEnd > 0);
+    const now = performance.now();
+    const lastEnd = r.length ? Math.max(...r.map(x => x.responseEnd)) : 0;
+    const tx = r.reduce((a, x) => a + (x.transferSize || 0), 0) + (n.transferSize || 0);
+    const dec = r.reduce((a, x) => a + (x.decodedBodySize || 0), 0) + (n.decodedBodySize || 0);
+
+    P('=== 載入性質（先確認兩次量測條件一致）===');
+    P('協定     :', n.nextHopProtocol || '?');
+    P('實際傳輸 :', mb(tx), ' 原始:', mb(dec));
+    P('判定     :', dec < 102400 ? '資料不足'
+      : (tx < dec * 0.2 ? '★ 走快取，不是冷啟動' : '冷啟動'));
+    P('請求數   :', r.length);
+
     P('');
-    P('=== JS 卡住的長任務（>50ms）===');
-    if (!tasks.length) {
-      P('  取不到（Chrome 才支援，或這次沒有長任務）');
-    } else {
-      const total = tasks.reduce((a, x) => a + x.duration, 0);
-      P('  數量:', tasks.length, ' 總阻塞:', ms(total));
-      [...tasks].sort((a, b) => b.duration - a.duration).slice(0, 8)
-        .forEach(x => P('  ', ms(x.duration).padStart(8), '@', ms(x.startTime)));
-    }
+    P('=== 時間軸 ===');
+    P('TTFB          :', ms(n.responseStart - n.requestStart));
+    P('Load 事件     :', ms(n.loadEventEnd));
+    P('最後請求結束  :', ms(lastEnd));
+    P('量測時點      :', ms(now), '（自動，非手動貼上）');
+    P('JS 總阻塞     :', ms(tasks.reduce((a, x) => a + x.duration, 0)),
+      '（' + tasks.length + ' 個長任務）');
+
+    const evts = r.map(x => ({ s: x.startTime, e: x.responseEnd, n: x.name }))
+      .sort((a, b) => a.s - b.s);
+    let cover = 0, gs = 0, gz = 0, ga = '';
+    evts.forEach(x => {
+      if (x.s - cover > gz) { gz = x.s - cover; gs = cover; ga = x.n; }
+      cover = Math.max(cover, x.e);
+    });
+    P('');
+    P('=== 最大網路空窗 ===');
+    P('從', ms(gs), '到', ms(gs + gz), ' 長度', ms(gz));
+    P('空窗後第一個 :', ga.replace(location.origin, '').slice(0, 66));
+
+    P('');
+    P('=== 耗時最久的 10 個請求 ===');
+    [...r].sort((a, b) => b.duration - a.duration).slice(0, 10)
+      .forEach(x => P('  ', ms(x.duration).padStart(8), ' ',
+        x.name.replace(location.origin, '').slice(0, 64)));
+
+    P('');
+    P('=== 最晚開始的 8 個請求 ===');
+    evts.slice(-8).forEach(x => P('  ', ms(x.s).padStart(8), ms(x.e - x.s).padStart(7),
+      ' ', x.n.replace(location.origin, '').slice(0, 60)));
+
     const txt = out.join('\n');
     console.log(txt);
-    let ok = false;
-    try { copy(txt); ok = true; } catch (e) { }
-    console.log(ok ? '↑ 已複製到剪貼簿' : '↑ 請手動選取複製');
-  }, 300);
-  return '量測中，0.3 秒後印出結果…';
+    try { copy(txt); console.log('↑ 已複製到剪貼簿'); }
+    catch (e) { console.log('↑ 請手動選取複製'); }
+  };
+
+  // 網路連續安靜 3 秒 = 初始化真的結束了，這時才量
+  let timer;
+  const arm = () => { clearTimeout(timer); timer = setTimeout(report, 3000); };
+  new PerformanceObserver(arm).observe({ type: 'resource', buffered: true });
+  arm();
+
+  return '量測中… 網路安靜 3 秒後自動印出結果。';
 })()
 ```
-
-**要看的**：
-
-- `判定` 那行如果是「走快取」，代表這次不是真實的首次載入，
-  要開 DevTools 的 **Network 分頁 → 勾選 Disable cache**，保持 DevTools 開著再重整一次
-- `Load 後又花了` 如果是好幾秒，那就是 **JS 在跑**，不是網路問題
-- `總阻塞` 很大 → 有擴充功能或大量資料在拖累初始化
-
----
-
-## 第三段：找出「到底在等什麼」
-
-當第二段量出 `Load 後又花了` 是好幾十秒、但 `總阻塞` 只有一兩秒，
-就代表瀏覽器在**閒等**。這段程式找出它在等誰。
-
-**貼上的時機很重要**：等畫面真的可以操作了就立刻貼，不要拖，
-否則你的等待時間會被算進去（這段程式會幫你分辨）。
-
-```js
-(() => {
-  const out = [];
-  const P = (...a) => out.push(a.join(' '));
-  const ms = v => Math.round(v) + 'ms';
-  const n = performance.getEntriesByType('navigation')[0];
-  const r = performance.getEntriesByType('resource').filter(x => x.responseEnd > 0);
-  const now = performance.now();
-  const lastEnd = r.length ? Math.max(...r.map(x => x.responseEnd)) : 0;
-
-  P('=== 網路活動到什麼時候 ===');
-  P('Load 事件      :', ms(n.loadEventEnd));
-  P('最後一個請求結束:', ms(lastEnd));
-  P('你貼上的時間   :', ms(now));
-  P('判定           :', now - lastEnd > 5000
-    ? '★ 網路早就閒下來了，這之後是在等非網路的東西（或貼上前你等了一下）'
-    : '★ 網路一路忙到最後，初始化確實卡在請求上');
-
-  // 找出時間軸上最大的空窗
-  const evts = r.map(x => ({ s: x.startTime, e: x.responseEnd, n: x.name }))
-    .sort((a, b) => a.s - b.s);
-  let cover = 0, gapStart = 0, gapSize = 0, gapAfter = '';
-  evts.forEach(x => {
-    if (x.s - cover > gapSize) { gapSize = x.s - cover; gapStart = cover; gapAfter = x.n; }
-    cover = Math.max(cover, x.e);
-  });
-  P('');
-  P('=== 最大的空窗（這段期間沒有任何網路活動）===');
-  P('從', ms(gapStart), '到', ms(gapStart + gapSize), ' 長度', ms(gapSize));
-  P('空窗後第一個請求:', gapAfter.replace(location.origin, '').slice(0, 70));
-
-  P('');
-  P('=== 開始得最晚的 15 個請求 ===');
-  P('   開始      耗時    名稱');
-  evts.slice(-15).forEach(x =>
-    P('  ', ms(x.s).padStart(8), ms(x.e - x.s).padStart(8), ' ', x.n.replace(location.origin, '').slice(0, 62)));
-
-  P('');
-  P('=== 耗時最久的 10 個請求 ===');
-  [...r].sort((a, b) => b.duration - a.duration).slice(0, 10)
-    .forEach(x => P('  ', ms(x.duration).padStart(8), ' ', x.name.replace(location.origin, '').slice(0, 66)));
-
-  const txt = out.join('\n');
-  console.log(txt);
-  let ok = false;
-  try { copy(txt); ok = true; } catch (e) { }
-  return ok ? '↑ 已複製到剪貼簿' : '↑ 請手動選取複製';
-})()
-```
-
-**怎麼讀**：
-
-- `最後一個請求結束` 接近你貼上的時間 → 真的一路在等網路，看「開始得最晚的請求」是誰
-- `最後一個請求結束` 早很多 → 網路不是瓶頸，是某段 JS 在等計時器或別的東西
-- `最大的空窗` 後面那個請求，通常就是**排隊排到它**的那一個
-
----
-
-## 怎麼讀這些數字
-
-### `HTTP 協定` 這一行最關鍵
-
-| 值 | 意思 |
-|---|---|
-| `h2` 或 `h3` | 好。可以多路複用，幾百個檔案能同時抓 |
-| `http/1.1` | **這就是元兇**。瀏覽器對同一網域最多只開 6 條連線，幾百個檔案要排隊，距離越遠放大越明顯 |
-
-### `TTFB 等待`
-
-- **< 100ms** — 伺服器很健康，問題不在它
-- **100–500ms** — 主要是距離造成的往返時間
-- **> 1000ms** — 伺服器真的在忙或在等別的東西，要往回查
-
-### `請求數` 和 `協定分布`
-
-SillyTavern 首頁大約會發 **200–400 個請求**。如果協定分布裡 `http/1.1` 佔了絕大多數，
-而 `TTFB` 又很低，那就百分之百是連線數瓶頸，跟伺服器效能無關。
-
-### `最慢的 10 個 API 呼叫`
-
-如果某個 `/api/...` 卡了好幾秒，那就是**初始化在等它**，跟前端檔案數量無關，
-要另外查那個 endpoint 在幹嘛。常見的是擴充功能自動更新、模型自動下載。
-
-### `沒被壓縮的大檔`
-
-應該是 **0**。不是 0 的話代表中間有東西把 SillyTavern 的 gzip 拆掉了。
-
----
-
-## 對照：怎麼修
-
-| 量出來的結果 | 意思 | 怎麼修 |
-|---|---|---|
-| `http/1.1` + TTFB 低 + 請求數幾百 | 連線數瓶頸 | 換一個支援 HTTP/2 的入口（自架 Caddy 預設就是 h2/h3），或在前面加 CDN |
-| TTFB > 1s | 伺服器在等別的東西 | 看伺服器 log，通常是啟動時的 git pull / 模型下載 |
-| 某個 `/api/` 卡好幾秒 | 特定功能拖住初始化 | 關掉 `extensions.autoUpdate` 和 `extensions.models.autoDownload` |
-| 全部都很快但體感還是慢 | 資料量太大 | 開 `performance.lazyLoadCharacters`，清掉舊備份 |
-| `沒被壓縮的大檔` > 0 | 壓縮被中間層拆掉 | 檢查反向代理設定 |
-
----
-
-## 補充：手機上也能量
-
-手機不方便開 Console，但你可以用這個方式間接判斷：
-**用手機的行動網路（不要用同一個 Wi-Fi）再開一次**。
-
-- 行動網路明顯更慢 → 是「檔案多 + 連線數少」的問題，頻寬和延遲一放大就爆
-- 兩邊一樣慢 → 是伺服器端在等東西，跟你的網路無關
 
 ---
 
@@ -300,6 +143,28 @@ await loadExtensionSettings(settings, isVersionChanged, enableAutoUpdate);
 ```
 
 擴充沒載完，初始化不會往下走。
+
+### 先確認變數真的生效了
+
+改完環境變數、重啟之後，在 Console 貼這一行：
+
+```js
+performance.getEntriesByType('resource').filter(x => x.name.includes('/extensions/')).length
+```
+
+- **回傳 `0`** → 擴充真的關掉了，A/B 測試有效
+- **回傳幾十** → 變數沒生效，下面的測試結果不算數
+
+會沒生效通常是：環境變數存了但服務沒真正重新啟動（要重新部署，
+不是只按重新整理），或是變數加在錯的服務上。
+
+`ENABLE_EXTENSIONS` 是在模組載入時就讀取並固定下來的：
+
+```js
+const ENABLE_EXTENSIONS = !!getConfigValue('extensions.enabled', true, 'boolean');
+```
+
+所以**一定要重啟 process** 才會重新讀。
 
 ### 兩分鐘的 A/B 測試
 
