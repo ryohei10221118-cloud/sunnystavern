@@ -252,7 +252,43 @@ done
 **SillyTavern 版本一變動，下次載入就會對每個擴充做 git 更新，而且是被
 `await` 住的**——repo 越大這一次越久。設 `extensions.autoUpdate: false` 可以避免。
 
-### 決定性的測試：搬走再測
+### 最好的做法：在 UI 裡停用，不要動檔案
+
+擴充面板（堆疊方塊圖示）→ 找到該擴充 → **停用**。
+
+這是最乾淨的方式，因為 `activateExtensions()` 是**在載入 script 之前**就檢查的：
+
+```js
+const isDisabled = extension_settings.disabledExtensions.includes(name);
+if (meetsModuleRequirements && ... && !isDisabled) {
+    // 只有到這裡才會 addExtensionScript()
+}
+```
+
+所以停用之後，那幾 MB 根本不會被下載、不會被 parse，排在它後面的擴充也不再等它。
+設定存在 `settings.json` 裡，重啟依然有效，隨時可以再打開。
+
+### 擴充可能裝在三個地方
+
+`/api/extensions/discover` 會掃這三處：
+
+| 位置 | 型別 | 說明 |
+|---|---|---|
+| `public/scripts/extensions/` | `system` | 內建擴充 |
+| `data/<使用者>/extensions/` | `local` | **每位使用者各自的**，優先權最高 |
+| `public/scripts/extensions/third-party/` | `global` | 全域第三方 |
+
+三處的網址都長得像 `/scripts/extensions/third-party/<名稱>/`，
+所以**光看網址分不出它裝在哪裡**。要動檔案之前先兩邊都找：
+
+```sh
+ls -la /home/node/app/public/scripts/extensions/third-party/
+ls -la /home/node/app/data/default-user/extensions/
+```
+
+同名時 `local` 會蓋過 `global`——你可能刪了 global 那份，實際生效的還是 local 那份。
+
+### 動檔案的測試：搬走再測
 
 ```sh
 cd /home/node/app/public/scripts/extensions/third-party
