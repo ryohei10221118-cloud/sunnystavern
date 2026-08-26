@@ -1,0 +1,25 @@
+# Caddy 會自動幫 {$ST_DOMAIN} 申請並續約 Let's Encrypt 憑證，
+# 你不用碰 certbot，只要 DNS 指對、80/443 有開就好。
+
+{$ST_DOMAIN} {
+	# 壓縮。SillyTavern 自己就會 gzip，這一行主要是替它沒壓到的回應補上，
+	# 已經壓好的內容會原樣轉出去，不會被解開重壓。
+	encode zstd gzip
+
+	# 靜態資源讓瀏覽器快取一週，之後每次開就不用重抓。
+	@static path /scripts/* /css/* /lib/* /fonts/* /webfonts/* /img/* /sounds/* /i18n.json
+	header @static Cache-Control "public, max-age=604800"
+
+	reverse_proxy sillytavern:8000 {
+		# 關鍵：關掉緩衝，不然 AI 的逐字串流回覆會卡住，
+		# 變成等很久然後整段一次跳出來。
+		flush_interval -1
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10MB
+			roll_keep 3
+		}
+	}
+}

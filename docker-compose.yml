@@ -1,0 +1,67 @@
+# SunnyTavern — 雲端 SillyTavern
+#
+# 兩個容器：
+#   sillytavern  官方 image，不對外開 port，只有 caddy 進得去
+#   caddy        負責 HTTPS、壓縮、靜態檔快取，也是唯一對外的入口
+#
+# 啟動：docker compose up -d
+# 看 log：docker compose logs -f sillytavern
+
+services:
+  sillytavern:
+    image: ghcr.io/sillytavern/sillytavern:latest
+    container_name: sillytavern
+    hostname: sillytavern
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - TZ=${TZ:-Asia/Taipei}
+      # healthcheck 用的心跳檔案，秒數
+      - SILLYTAVERN_HEARTBEATINTERVAL=30
+      # 帳號密碼從 .env 帶進來，不要寫死在 config.yaml 裡
+      - SILLYTAVERN_BASICAUTHUSER_USERNAME=${ST_USER}
+      - SILLYTAVERN_BASICAUTHUSER_PASSWORD=${ST_PASSWORD}
+    volumes:
+      # config：設定檔。data：你的角色卡、聊天記錄、API key，最重要的一個
+      - ./config:/home/node/app/config
+      - ./data:/home/node/app/data
+      - ./plugins:/home/node/app/plugins
+      - ./extensions:/home/node/app/public/scripts/extensions/third-party
+    # 注意這裡是 expose 不是 ports：8000 只開給 docker 內部網路，
+    # 外面連不到，所有流量一定要走 caddy 的 HTTPS。
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "node", "src/healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    networks:
+      - tavern
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    environment:
+      - ST_DOMAIN=${ST_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # 憑證放這，不要刪掉否則會重新申請
+      - caddy_config:/config
+    depends_on:
+      - sillytavern
+    networks:
+      - tavern
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  tavern:

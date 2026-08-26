@@ -1,0 +1,127 @@
+# ─────────────────────────────────────────────────────────────
+# SunnyTavern — 給「公開在網路上」的 SillyTavern 用的設定
+#
+# 這裡只寫「需要跟預設不一樣」的項目。
+# 容器第一次啟動時會自動把其他缺少的欄位補上預設值，
+# 所以你看到檔案被加長、註解被動過，都是正常的。
+#
+# 任何一項也可以用環境變數覆蓋，規則是把路徑轉大寫、點換底線並加前綴：
+#   basicAuthUser.password  ->  SILLYTAVERN_BASICAUTHUSER_PASSWORD
+#   performance.useDiskCache ->  SILLYTAVERN_PERFORMANCE_USEDISKCACHE
+# ─────────────────────────────────────────────────────────────
+
+# ── 伺服器 ────────────────────────────────────────────────────
+# 必須 true，否則只有容器自己連得到，Caddy 轉不進去
+listen: true
+listenAddress:
+  ipv4: 0.0.0.0
+protocol:
+  ipv4: true
+  ipv6: false
+port: 8000
+# 讓 docker healthcheck 有東西可以檢查
+heartbeatInterval: 30
+# 伺服器上沒有瀏覽器可以開，關掉
+browserLaunch:
+  enabled: false
+
+# ── 安全 ─────────────────────────────────────────────────────
+# 你的網址是公開的，全世界都掃得到。這一段不能省。
+#
+# 規則：listen 開了以後，whitelistMode / basicAuthMode / enableUserAccounts
+# 至少要有一個是開的，否則 SillyTavern 會直接拒絕啟動（這是它的保護機制）。
+
+# 白名單用 IP 判斷，雲端 + 手機浮動 IP 不適用，關掉
+whitelistMode: false
+# 改用帳號密碼擋在最前面。帳密由 .env 經環境變數帶入，
+# 這裡的值只是佔位，不會生效。
+basicAuthMode: true
+basicAuthUser:
+  username: "placeholder"
+  password: "placeholder"
+
+# 單人用就維持 false。要開給朋友一起用再改 true，
+# 改成 true 之後每個人有自己的角色卡和聊天記錄。
+enableUserAccounts: false
+
+# 登入後不自動登出（-1）。要更嚴格可以填秒數，例如 604800 = 7 天
+sessionTimeout: -1
+
+# 擋掉別人用偽造的 Host header 來探你的站
+hostWhitelist:
+  # 部署好、確認網域能連之後再改成 true，並把網域填進 hosts。
+  # 先開 true 又填錯會把自己鎖在外面。
+  enabled: false
+  scan: true
+  # 注意：這裡一定要是清單（`[]` 或 `- 網域`）。
+  # 如果寫成空的 `hosts:`，YAML 會解析成 null，SillyTavern 每個請求都會回 500。
+  hosts: []
+  # 啟用時改成：
+  # hosts:
+  #   - tavern.example.com
+
+# 我們前面有 Caddy，要讓 SillyTavern 讀得到真實來源 IP，
+# 否則所有請求看起來都來自同一個 docker 內部 IP，防爆破會失效
+forwardedHeaders:
+  xRealIp: true
+  xForwardedFor: true
+  cfConnectingIp: false   # 有掛 Cloudflare 才改 true
+rateLimiting:
+  preferRealIpHeader: true
+  basicAuthMaxAttempts: 5
+
+# 防 SSRF：不讓別人透過你的伺服器去戳內網
+privateAddressWhitelist:
+  enabled: true
+  log:
+    blockedRequests: true
+
+# ── 速度 ─────────────────────────────────────────────────────
+performance:
+  # 角色卡多的時候延遲載入，開站速度差很多
+  lazyLoadCharacters: true
+  memoryCacheCapacity: '200mb'
+  useDiskCache: true
+  # 存檔、傳大 payload 時壓縮
+  requestCompression:
+    enabled: true
+    minPayloadSize: '256kb'
+
+extensions:
+  enabled: true
+  # 預設是 true，代表「每次容器啟動都去 git pull 一輪第三方擴充」，
+  # 網路慢的時候會讓啟動卡住好幾十秒。要更新時手動更新就好。
+  autoUpdate: false
+  models:
+    # 預設 true，會從 HuggingFace 下載數百 MB 的本地模型。
+    # 除非你要用圖片描述 / 情緒辨識那些功能，否則關掉。
+    autoDownload: false
+
+# 縮圖：保持開啟。關掉的話每次列表都會載入原尺寸大圖，反而更慢。
+thumbnails:
+  enabled: true
+  format: "jpg"
+  quality: 85
+
+# 備份：預設是無上限，跑久了 data 目錄會塞滿幾萬個檔案，
+# 掃描目錄就開始變慢。設個上限。
+backups:
+  common:
+    numberOfBackups: 20
+  chat:
+    enabled: true
+    checkIntegrity: true
+    maxTotalBackups: 500
+
+logging:
+  # 每個請求都寫一行，量很大，關掉。Caddy 那邊已經有 access log 了。
+  enableAccessLog: false
+  minLogLevel: 1   # INFO
+
+# ── Google Gemini ────────────────────────────────────────────
+# API key 不放這裡，是在網頁的 API 設定頁面輸入，
+# 存到 data/default-user/secrets.json（有掛 volume 所以不會掉）
+gemini:
+  apiVersion: 'v1beta'
+  # Gemini 3 系列的思考簽章，保持開啟
+  thoughtSignatures: true

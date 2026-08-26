@@ -1,0 +1,7 @@
+# 執行期產生的東西，不要進 git（裡面有你的聊天記錄、角色卡、API key）
+/data/
+/plugins/
+/extensions/
+/backups/
+.env
+*.log
