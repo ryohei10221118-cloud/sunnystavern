@@ -131,6 +131,72 @@
 
 ---
 
+## 第三段：找出「到底在等什麼」
+
+當第二段量出 `Load 後又花了` 是好幾十秒、但 `總阻塞` 只有一兩秒，
+就代表瀏覽器在**閒等**。這段程式找出它在等誰。
+
+**貼上的時機很重要**：等畫面真的可以操作了就立刻貼，不要拖，
+否則你的等待時間會被算進去（這段程式會幫你分辨）。
+
+```js
+(() => {
+  const out = [];
+  const P = (...a) => out.push(a.join(' '));
+  const ms = v => Math.round(v) + 'ms';
+  const n = performance.getEntriesByType('navigation')[0];
+  const r = performance.getEntriesByType('resource').filter(x => x.responseEnd > 0);
+  const now = performance.now();
+  const lastEnd = r.length ? Math.max(...r.map(x => x.responseEnd)) : 0;
+
+  P('=== 網路活動到什麼時候 ===');
+  P('Load 事件      :', ms(n.loadEventEnd));
+  P('最後一個請求結束:', ms(lastEnd));
+  P('你貼上的時間   :', ms(now));
+  P('判定           :', now - lastEnd > 5000
+    ? '★ 網路早就閒下來了，這之後是在等非網路的東西（或貼上前你等了一下）'
+    : '★ 網路一路忙到最後，初始化確實卡在請求上');
+
+  // 找出時間軸上最大的空窗
+  const evts = r.map(x => ({ s: x.startTime, e: x.responseEnd, n: x.name }))
+    .sort((a, b) => a.s - b.s);
+  let cover = 0, gapStart = 0, gapSize = 0, gapAfter = '';
+  evts.forEach(x => {
+    if (x.s - cover > gapSize) { gapSize = x.s - cover; gapStart = cover; gapAfter = x.n; }
+    cover = Math.max(cover, x.e);
+  });
+  P('');
+  P('=== 最大的空窗（這段期間沒有任何網路活動）===');
+  P('從', ms(gapStart), '到', ms(gapStart + gapSize), ' 長度', ms(gapSize));
+  P('空窗後第一個請求:', gapAfter.replace(location.origin, '').slice(0, 70));
+
+  P('');
+  P('=== 開始得最晚的 15 個請求 ===');
+  P('   開始      耗時    名稱');
+  evts.slice(-15).forEach(x =>
+    P('  ', ms(x.s).padStart(8), ms(x.e - x.s).padStart(8), ' ', x.n.replace(location.origin, '').slice(0, 62)));
+
+  P('');
+  P('=== 耗時最久的 10 個請求 ===');
+  [...r].sort((a, b) => b.duration - a.duration).slice(0, 10)
+    .forEach(x => P('  ', ms(x.duration).padStart(8), ' ', x.name.replace(location.origin, '').slice(0, 66)));
+
+  const txt = out.join('\n');
+  console.log(txt);
+  let ok = false;
+  try { copy(txt); ok = true; } catch (e) { }
+  return ok ? '↑ 已複製到剪貼簿' : '↑ 請手動選取複製';
+})()
+```
+
+**怎麼讀**：
+
+- `最後一個請求結束` 接近你貼上的時間 → 真的一路在等網路，看「開始得最晚的請求」是誰
+- `最後一個請求結束` 早很多 → 網路不是瓶頸，是某段 JS 在等計時器或別的東西
+- `最大的空窗` 後面那個請求，通常就是**排隊排到它**的那一個
+
+---
+
 ## 怎麼讀這些數字
 
 ### `HTTP 協定` 這一行最關鍵
@@ -209,3 +275,47 @@ movingUI、QuickReplies、worlds，加上四家 API 的預設集。
 
 > 注意：刪預設集前先備份。這個改善的是每次載入固定的幾百毫秒，
 > 如果你的問題是「卡好幾秒」，那主因不在這裡，別先動它。
+
+---
+
+## 已知瓶頸：擴充功能是「一個一個」載入的
+
+`public/scripts/extensions.js` 的 `activateExtensions()`：
+
+```js
+for (let entry of extensions) {
+    ...
+    await promise   // ← 在迴圈裡 await
+}
+```
+
+擴充是**依序**啟用的，前一個沒跑完 `activate` hook，下一個不會開始。
+SillyTavern 內建就有四十幾個擴充，再加上第三方的，只要其中一個在等網路，
+後面全部排隊，初始化就會停在那裡。
+
+而且這整段在初始化流程裡是被 `await` 的：
+
+```js
+await loadExtensionSettings(settings, isVersionChanged, enableAutoUpdate);
+```
+
+擴充沒載完，初始化不會往下走。
+
+### 兩分鐘的 A/B 測試
+
+在平台的環境變數加一條，重新啟動：
+
+```
+SILLYTAVERN_EXTENSIONS_ENABLED=false
+```
+
+這會讓前端直接跳過整個 `loadExtensionSettings`。
+
+- **變快** → 就是擴充。再一個一個關，找出是哪一個
+- **一樣慢** → 擴充無罪，往別的方向查
+
+測完把環境變數刪掉就完全恢復，不會動到任何資料。
+
+> 另外注意 `extensions.autoUpdate`（預設 `true`）：**SillyTavern 版本變動後的
+> 第一次載入**，會在初始化過程中對每個第三方擴充做一次 git 更新，而且是
+> 被 await 的。那一次會特別久。設成 `false` 可以避免。
