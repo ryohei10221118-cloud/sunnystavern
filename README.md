@@ -33,6 +33,7 @@
 | **每次 deploy 都要等好幾分鐘** | 用了 Node.js buildpack 從原始碼 build，每次都重跑 `npm ci` 和 webpack | 改用官方預先做好的 Docker image |
 | **啟動要等很久才有反應** | SillyTavern 預設會在啟動時 `git pull` 所有第三方擴充、下載 HuggingFace 模型和 tokenizer | 本 repo 的 `config/config.yaml` 已經把這些關掉了 |
 | **AI 回覆不是逐字出現，是等很久然後一次全部跳出來** | 反向代理把串流回應緩衝住了 | Caddy 要設 `flush_interval -1`（本 repo 已設好） |
+| **卡在初始化很久，但網頁本身載得很快** | 某個第三方擴充太肥。擴充是**依序**載入的，一個卡住後面全部排隊 | 用 [docs/diagnose.md](docs/diagnose.md) 的「各擴充體積」找出兇手，看「最晚結束」那一欄 |
 
 > **關於壓縮**：SillyTavern 本身就內建了 gzip 壓縮（`compression` middleware，預設開啟），
 > 所以這一項通常不是你的問題。要注意的是**不要讓中間的代理把它拆掉**——
