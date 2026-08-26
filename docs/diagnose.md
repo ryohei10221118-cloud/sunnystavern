@@ -99,7 +99,11 @@
 那通常不是伺服器慢，是**頻寬**。這段直接量。
 
 直接在**已經載入完成**的酒館頁面貼上就好，不用先重整。
-它只會挑靜態檔案（`.js` / `.css` / 字型）來測，並且會先確認抓得到才開始計時：
+它只會挑靜態檔案（`.js` / `.css` / 字型）來測，並且會先確認抓得到才開始計時。
+
+> **判讀注意**：Mbps 是用**解壓後**的位元組數算的。檔案有 gzip 的話，
+> 實際在線路上跑的位元組更少，所以這個數字會**高估**線路速率。
+> 它適合拿來跟自己的測速結果比大小級距，不適合當精確的線路頻寬。
 
 ```js
 (async () => {
@@ -166,6 +170,74 @@ SillyTavern 冷啟動要傳 **4MB 以上**的 JS/CSS/字型，全部都是**靜�
 
 自架的話，本 repo 的 Caddy 設定已經對這些路徑加了一週的瀏覽器快取，
 但**第一次**還是要從伺服器抓，所以頻寬受限的平台換掉才是根治。
+
+---
+
+## 第三段：算出每個擴充各花你多少
+
+**這段要在擴充「開著」的狀態下量**（如果你之前加了
+`SILLYTAVERN_EXTENSIONS_ENABLED=false`，先拿掉並重啟）。
+
+強制重整、等載完，然後貼上：
+
+```js
+(() => {
+  const r = performance.getEntriesByType('resource');
+  const groups = {};
+  const add = (k, x) => {
+    (groups[k] ??= { n: 0, dec: 0, tx: 0, dur: 0, last: 0 });
+    groups[k].n++;
+    groups[k].dec += x.decodedBodySize || 0;
+    groups[k].tx += x.transferSize || 0;
+    groups[k].dur += x.duration || 0;
+    groups[k].last = Math.max(groups[k].last, x.responseEnd);
+  };
+  r.forEach(x => {
+    const p = new URL(x.name).pathname;
+    const m = p.match(/\/scripts\/extensions\/(third-party\/)?([^/]+)\//);
+    add(m ? (m[1] ? '★ ' : '') + m[2] : '(SillyTavern 本體)', x);
+  });
+  const mb = v => (v / 1048576).toFixed(2) + 'MB';
+  const rows = Object.entries(groups).sort((a, b) => b[1].dec - a[1].dec);
+  const out = ['=== 各擴充的體積（★ = 第三方）===',
+    '  解壓後    實際傳輸   檔數  最晚結束  名稱'];
+  rows.forEach(([k, v]) => out.push('  ' + mb(v.dec).padStart(8) + '  ' + mb(v.tx).padStart(8)
+    + '  ' + String(v.n).padStart(4) + '  ' + (Math.round(v.last) + 'ms').padStart(8) + '  ' + k));
+  const ext = rows.filter(x => x[0] !== '(SillyTavern 本體)');
+  out.push('');
+  out.push('擴充合計 : ' + mb(ext.reduce((a, x) => a + x[1].dec, 0)) + ' 解壓後 / '
+    + mb(ext.reduce((a, x) => a + x[1].tx, 0)) + ' 實際傳輸，共 '
+    + ext.reduce((a, x) => a + x[1].n, 0) + ' 個檔案');
+  const txt = out.join('\n');
+  console.log(txt);
+  try { copy(txt); console.log('↑ 已複製'); } catch (e) { }
+})()
+```
+
+**怎麼讀**：
+
+- `解壓後`才是瀏覽器要 parse 和執行的量，**這個數字對 CPU 的負擔最直接**，
+  手機上尤其明顯
+- `實際傳輸`是走網路的量，跟你的頻寬有關
+- `最晚結束`很大的那個，就是**拖住初始化的兇手**
+
+一個擴充如果解壓後超過 1MB，就值得問「這功能值不值這個代價」。
+超過 3MB 基本上就是在拿整站的啟動速度換它。
+
+### 怎麼移除某個擴充
+
+在 SillyTavern 裡：擴充面板（堆疊方塊圖示）→ 找到該擴充 → 刪除。
+
+或直接動檔案（Zeabur 的「指令」按鈕可以進容器）：
+
+```bash
+cd /home/node/app/public/scripts/extensions/third-party
+ls -la                    # 先看有哪些
+du -sh */                 # 看各自多大 ← 最直接
+mv 擴充名稱 /tmp/          # 先搬走不要刪，確認變快再刪
+```
+
+搬完重啟服務。要還原就把它搬回來。
 
 ---
 
