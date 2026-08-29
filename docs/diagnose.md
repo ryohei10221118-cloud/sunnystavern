@@ -475,3 +475,127 @@ SILLYTAVERN_EXTENSIONS_ENABLED=false
 **永遠拿「SillyTavern 本體」的完成時間當基準線，看相對差距，不要看絕對值。**
 絕對值會被伺服器冷熱、快取狀態、當下網路影響而大幅跳動；
 「某個擴充比本體晚幾秒」才是穩定且可比較的指標。
+
+---
+
+# 另一種慢：介面卡頓
+
+前面整份文件講的是「**打開很慢**」——載入階段的問題。
+但還有另一種完全不同的慢：**打開時很順，一點進對話就卡，之後做任何操作都要等好幾秒**。
+
+兩者的成因和解法完全不同，先分清楚：
+
+| 症狀 | 屬於 | 往哪查 |
+|---|---|---|
+| 打開網址後等很久才看到介面 | 載入慢 | 本文件前半部 |
+| 介面出來了但卡在初始化 | 載入慢 | 各擴充體積、最晚結束 |
+| **打開很順，點進對話才開始卡** | **介面卡頓** | 以下 |
+
+## 先量規模
+
+在 Console 貼上：
+
+```js
+(() => {
+  const q = s => document.querySelectorAll(s).length;
+  const out = [
+    '訊息數        : ' + q('.mes'),
+    'iframe 數     : ' + q('iframe'),
+    '圖片數        : ' + q('img'),
+    '<style> 標籤  : ' + q('style'),
+    '總元素數      : ' + document.getElementsByTagName('*').length,
+  ].join('\n');
+  console.log(out);
+  try { copy(out); } catch (e) {}
+})()
+```
+
+參考值（實測一個會卡的環境）：
+
+```
+訊息數        : 101
+iframe 數     : 27
+圖片數        : 250
+<style> 標籤  : 114
+總元素數      : 38,592
+```
+
+同一環境的閒置長任務總阻塞達 **40 秒**、強制重排 **186ms**。
+
+## 第一順位的解法：減少渲染的訊息數
+
+**User Settings → `# Msg. to Load`（載入訊息數）**，預設 **100**。
+
+SillyTavern 的實作：
+
+```js
+export async function printMessages() {
+    let count = power_user.chat_truncation || Number.MAX_SAFE_INTEGER;
+    if (chat.length > count) {
+        startIndex = chat.length - count;
+        chatElement.append('<div id="show_more_messages">Show more messages</div>');
+    }
+```
+
+**它只決定畫面從第幾則開始渲染**，不影響聊天記錄檔案、不影響送給模型的內容（那由上下文長度決定）、也不影響世界書與記憶書（那些讀的是 `chat` 陣列）。
+
+把 100 調成 **10～20**，DOM 規模大約降到五分之一。舊訊息用畫面頂端的
+**Show more messages** 按鈕載入。
+
+唯一的實際影響：要對舊訊息操作（編輯、標記記憶場景）時，得先按那個按鈕把它載出來。
+
+## 為什麼訊息數的影響這麼大
+
+主題與模板的成本是**乘以訊息數**的：
+
+- 裝飾性主題會為每則訊息加上外框、紙膠帶、材質等背景圖
+  （實測 101 則訊息產生 250 張圖片請求）
+- 訊息中的 HTML 區塊會被 SillyTavern 放進 **iframe** 執行；
+  每個 iframe 都是獨立文件，各自解析 HTML、套用 CSS、執行 JS、載入圖片
+
+所以同樣一份主題或模板，在 10 則訊息下毫無感覺，在 100 則下就會癱瘓。
+
+> **注意**：iframe 內部的資源**不會**出現在主文件的統計裡。
+> 要看進去得用 `iframe.contentDocument`，且沙箱設定可能擋住。
+
+## 陷阱：`/hide` 會讓 Regex 的深度限制失效
+
+Regex 腳本可以設定「最大深度」，限制只套用到最近幾則訊息。但深度是這樣算的：
+
+```js
+const usableMessages = chat.map(...).filter(x => !x.message.is_system);
+const indexOf = usableMessages.findIndex(x => x.index === Number(messageId));
+const depth = messageId >= 0 && indexOf !== -1 ? (usableMessages.length - indexOf - 1) : undefined;
+```
+
+而深度檢查是：
+
+```js
+if (typeof depth === 'number') {   // undefined 就整段跳過
+```
+
+`/hide` 會把訊息標記為 `is_system`，這類訊息被排除在 `usableMessages` 之外，
+`findIndex` 回傳 -1，`depth` 成為 `undefined`，**深度檢查被整個跳過**——
+於是每一則隱藏訊息都會套用該 Regex。
+
+實測結果：最大深度設為 1，未隱藏時只有最新 2 則生成卡片；
+隱藏 150 則之後變成 **27 個 iframe**。
+
+### 兩者可以並存
+
+只要**載入訊息數夠小**，被隱藏的訊息根本不會被渲染，也就不會生成 iframe：
+
+| 設定 | 管什麼 |
+|---|---|
+| `/hide 0-150` | 模型**讀**幾則（省 token） |
+| 載入訊息數 = 10 | 畫面**畫**幾則（省效能） |
+
+反過來說，若日後把載入訊息數調大並捲動到隱藏範圍，卡頓會再度出現。
+
+## 判讀原則
+
+1. **先分清楚是「載入慢」還是「操作卡」**——查錯方向會浪費大量時間。
+2. **`buffered: true` 的長任務統計是累計值**，不重新整理就會一直帶著舊帳；
+   要量當下狀態請用不帶 buffered 的觀察器，並在量測期間不要操作。
+3. **主文件的統計看不到 iframe 內部**，改善了 iframe 內的東西，主文件數字不會變。
+4. **成本會乘以訊息數**——先降訊息數，再去優化單則的成本。
