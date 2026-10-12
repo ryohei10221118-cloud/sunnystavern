@@ -426,6 +426,8 @@ df -h                          # 磁碟滿了也會讓一切變慢
 │   ├── diagnose.md             量測「打開很慢」到底慢在哪
 │   ├── lazy-monaco-extension.md 改良版 ST-Prompt-Template 的安裝與說明
 │   └── migration.md            從舊酒館搬資料過來的完整步驟
+├── st-extensions/
+│   └── zhtw-live/              台灣繁中即時轉換（AI 回覆自動轉台灣用語）
 └── data/                       （執行時產生）你的角色卡和聊天記錄，不進 git
 ```
 

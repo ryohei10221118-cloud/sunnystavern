@@ -1,0 +1,12 @@
+{
+    "display_name": "台灣繁中即時轉換",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "SunnyTavern",
+    "version": "1.0.0",
+    "homePage": "https://github.com/ryohei10221118-cloud/sunnystavern/tree/claude/silly-tavern-setup-w23pkw/st-extensions/zhtw-live",
+    "auto_update": false
+}

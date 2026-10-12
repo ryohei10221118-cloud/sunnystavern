@@ -1,0 +1,48 @@
+.zhtw-live-settings .zhtw-live-row {
+    align-items: flex-start;
+    margin: 4px 0;
+}
+
+.zhtw-live-settings .zhtw-live-row span,
+.zhtw-live-settings label[for] {
+    display: flex;
+    flex-direction: column;
+}
+
+.zhtw-live-settings small {
+    opacity: 0.7;
+    font-size: 0.85em;
+    font-weight: normal;
+}
+
+.zhtw-live-settings label[for] {
+    margin-top: 10px;
+}
+
+.zhtw-live-settings textarea {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.zhtw-live-settings .zhtw-live-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.zhtw-live-settings .zhtw-live-test-out {
+    min-height: 1.6em;
+    padding: 6px 8px;
+    border: 1px dashed var(--SmartThemeBorderColor, #888);
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.zhtw-live-settings .zhtw-live-status {
+    margin-top: 8px;
+    opacity: 0.7;
+    font-size: 0.85em;
+    white-space: pre-line;
+}
