@@ -15,10 +15,11 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dictionary = JSON.parse(readFileSync(join(root, 'data/dictionary.json'), 'utf8'));
 const extraRules = JSON.parse(readFileSync(join(root, 'data/extra-rules.json'), 'utf8'));
 const shared = JSON.parse(readFileSync(join(root, 'data/opencc-shared-chars.json'), 'utf8'));
+const taiwanmd = JSON.parse(readFileSync(join(root, 'data/taiwanmd-terms.json'), 'utf8'));
 const opencc = Converter({ from: 'cn', to: 'tw' });
 const simplifiedChars = buildSimplifiedCharSet(Locale.from.cn[0], shared.chars);
 // 跟擴充正式執行時的組法一模一樣
-const make = (options = {}, protectWords = []) => createConverter({ opencc, dictionary, extraRules, simplifiedChars, protectWords, options });
+const make = (options = {}, protectWords = []) => createConverter({ opencc, dictionary, extraRules, taiwanmdTerms: taiwanmd.terms, simplifiedChars, protectWords, options });
 const convert = make();
 
 // ---------------------------------------------------------------------------
@@ -53,6 +54,21 @@ test('近年新詞：小程序、爆火、門店、點贊、刷屏、博主、�
 
 test('近年新詞不誤傷前後文', () => {
     for (const s of ['他引爆火藥，爆火光照亮了夜空。', '他推開門店員就迎了上來，敲打車窗的聲音很急。', '賭博主要是靠運氣。']) {
+        assert.equal(convert(s), s);
+    }
+});
+
+test('Taiwan.md 日常用語', () => {
+    assert.equal(
+        convert('她在便利店买了易拉罐和冰棍，又去药店拿哮喘的药，晚上用电饭锅煮饭。'),
+        '她在便利商店買了易開罐和冰棒，又去藥局拿氣喘的藥，晚上用電鍋煮飯。',
+    );
+    assert.equal(convert('他在社交媒体上看到意大利和新西兰的照片，服务员送来了奶酪。'), '他在社群媒體上看到義大利和紐西蘭的照片，服務生送來了乳酪。');
+    assert.equal(make({ taiwanmd: false })('她在便利店买了冰棍。'), '她在便利店買了冰棍。');
+});
+
+test('Taiwan.md 用語不誤傷前後文', () => {
+    for (const s of ['他親自提出要求，侍衛衣衫整齊。', '風暴擊中了船，可愛豆子滾了一地。', '他毫無語氣地說：宜家宜室，莫奈何。', '忍耐克制，牽掛科舉，配合同事。']) {
         assert.equal(convert(s), s);
     }
 });

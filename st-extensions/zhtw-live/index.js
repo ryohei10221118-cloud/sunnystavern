@@ -52,7 +52,8 @@ function loadAssets() {
             json('./data/dictionary.json'),
             json('./data/extra-rules.json'),
             json('./data/opencc-shared-chars.json'),
-        ]).then(([opencc, dictionary, extraRules, shared]) => {
+            json('./data/taiwanmd-terms.json'),
+        ]).then(([opencc, dictionary, extraRules, shared, taiwanmd]) => {
             assetStatus.state = 'ready';
             updateStatus();
             return {
@@ -60,6 +61,7 @@ function loadAssets() {
                 simplifiedChars: buildSimplifiedCharSet(opencc.Locale.from.cn[0], shared.chars),
                 dictionary,
                 extraRules,
+                taiwanmdTerms: taiwanmd.terms,
             };
         }).catch(err => {
             assetsPromise = null;   // 失敗了下次再試
@@ -237,6 +239,7 @@ const CHECKBOXES = [
     ['autoFix', '修正轉換錯字', '例如「粉絲髮現」→「粉絲發現」（建議保持開啟）'],
     ['taiwan', '台灣用語（OrchidTea 詞庫）', '視頻→影片、屏幕→螢幕、默認→預設…'],
     ['vocabulary', '台灣用語（補充）', '出租車→計程車、空調→冷氣、小區→社區…'],
+    ['taiwanmd', '台灣用語（Taiwan.md 詞庫）', '社交媒體→社群媒體、意大利→義大利、便利店→便利商店…'],
     ['context', '依前後文判斷', '信息→訊息／資訊、質量→品質（物理用法不改）'],
     ['taiToTai', '「臺」統一寫成「台」', '舞台、平台、台灣'],
     ['regexWords', '保留正則用到的詞', '角色卡／預設的正則裡出現的中文詞不轉換，避免正則失效（建議保持開啟）'],

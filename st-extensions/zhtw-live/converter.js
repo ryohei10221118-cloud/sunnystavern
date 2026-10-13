@@ -7,7 +7,7 @@
  *   1. OpenCC 簡體 → 台灣字形（cn → tw，只換字形，不用會轉過頭的 twp 詞彙模式）
  *   2. 自動修正：OpenCC 斷詞造成的錯字（髮現→發現、籤名→簽名、託盤→托盤…）
  *   3. 台灣用語：意思明確的詞（視頻→影片、屏幕→螢幕…）
- *   4. 本擴充補充的用語與前後文規則（信息→訊息／資訊、質量→品質…）
+ *   4. 本擴充補充的用語、Taiwan.md 詞庫的日常用語、前後文規則（信息→訊息／資訊、質量→品質…）
  *   5. 「臺」統一成「台」
  *   6. 使用者自訂替換
  *
@@ -29,6 +29,7 @@ export const DEFAULT_OPTIONS = Object.freeze({
     autoFix: true,
     taiwan: true,
     vocabulary: true,
+    taiwanmd: true,
     context: true,
     taiToTai: true,
     customPairs: '',
@@ -153,11 +154,12 @@ export function buildSimplifiedCharSet(stCharacters, sharedChars) {
  * @param {object} [p.extraRules] 本擴充補充規則（context / vocabulary）
  * @param {Set<string>} [p.simplifiedChars] 只有簡體才用的字。有給的話，沒有這些字的行
  *   會被視為已經是繁體、不經過 OpenCC（避免把正確的繁體二次轉錯，例如 托盤→託盤）
+ * @param {Array<[string, string]>} [p.taiwanmdTerms] Taiwan.md 詞庫的取代規則
  * @param {string[]} [p.protectWords] 額外要原樣保留的詞（例如正則用到的詞）
  * @param {object} [p.options] 見 DEFAULT_OPTIONS
  * @returns {(text: string) => string}
  */
-export function createConverter({ opencc, dictionary, extraRules = {}, simplifiedChars = null, protectWords = [], options = {} }) {
+export function createConverter({ opencc, dictionary, extraRules = {}, taiwanmdTerms = [], simplifiedChars = null, protectWords = [], options = {} }) {
     const opts = { ...DEFAULT_OPTIONS, ...options };
 
     const steps = [];
@@ -167,6 +169,7 @@ export function createConverter({ opencc, dictionary, extraRules = {}, simplifie
     }
     if (opts.taiwan) steps.push(...compileGroup(dictionary?.taiwan, false));
     if (opts.vocabulary) steps.push(...compileGroup(extraRules?.vocabulary, false));
+    if (opts.taiwanmd) steps.push(...compileGroup(taiwanmdTerms, false));
     if (opts.context) steps.push(...compileGroup(extraRules?.context, true));
 
     // 使用者輸入的原文可能是簡體，先過一次 OpenCC，才對得上轉換後的文字

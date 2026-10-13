@@ -63,7 +63,9 @@ SillyTavern 1.18.0 實測（各 3 輪 × 7 次，交錯量測，從開頁到介�
    已經是繁體的行不再轉一次，避免「托盤」被轉錯成「託盤」。
 2. [OrchidTea 角色卡台灣繁中工具](https://orchidtea.github.io/st-card-zhtw/)的詞庫，
    用同一套詞庫，卡片和聊天的用字才會一致。
-3. 本擴充補充的用語與前後文規則（`data/extra-rules.json`）。
+3. [Taiwan.md](https://github.com/frank890417/taiwan-md) 用語資料庫裡的日常用語（`data/taiwanmd-terms.json`，約 190 條，
+   如便利店→便利商店、意大利→義大利；科技與財經術語不收），可在設定裡單獨關閉。
+4. 本擴充補充的用語與前後文規則（`data/extra-rules.json`）。
 
 第三方授權見 [NOTICE.md](NOTICE.md)。
 

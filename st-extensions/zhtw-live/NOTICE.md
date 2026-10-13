@@ -7,6 +7,7 @@
 | `lib/opencc-cn2t.js` | [opencc-js](https://github.com/nk2028/opencc-js) 1.0.5（The nk2028 Project） | MIT，全文見 `lib/LICENSE-opencc-js.txt` |
 | `lib/opencc-cn2t.js` 內含的詞典資料 | [OpenCC](https://github.com/BYVoid/OpenCC) | Apache License 2.0 |
 | `data/opencc-shared-chars.json` | 由 [OpenCC](https://github.com/BYVoid/OpenCC) 的 `STCharacters.txt` 計算出的繁簡共用字清單 | Apache License 2.0 |
+| `data/taiwanmd-terms.json` | [Taiwan.md](https://github.com/frank890417/taiwan-md) 用語資料庫（`data/terminology`），篩選日常用詞後轉成取代規則 | CC BY-SA 4.0；本檔為改作，依相同授權釋出 |
 | `data/dictionary.json` | [角色卡台灣繁中工具](https://github.com/orchidtea/st-card-zhtw)（OrchidTea）詞庫，版本 2026-09-26 | MIT，全文見 `data/LICENSE-dictionary.txt` |
 
 `data/extra-rules.json`、`converter.js`、`message.js`、`index.js`、`style.css` 為本擴充原創。
